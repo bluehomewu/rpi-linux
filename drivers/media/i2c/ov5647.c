@@ -1111,6 +1111,30 @@ out:
 	return ret;
 }
 
+static ssize_t power_control_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    // Return the current power state as a string in buf
+		struct ov5647 *sensor = dev_get_drvdata(dev);
+		if (sensor->streaming) {
+			return sprintf(buf, "on\n");
+		} else {
+			return sprintf(buf, "off\n");
+		}
+}
+
+static ssize_t power_control_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+    struct ov5647 *sensor = dev_get_drvdata(dev);
+    if (strncmp(buf, "on", 2) == 0) {
+        ov5647_power_on(dev);
+    } else if (strncmp(buf, "off", 3) == 0) {
+        ov5647_power_off(dev);
+    }
+    return count;
+}
+
+static DEVICE_ATTR(power_control, S_IWUSR | S_IRUGO, power_control_show, power_control_store);
+
 static int ov5647_probe(struct i2c_client *client)
 {
 	struct device_node *np = client->dev.of_node;
@@ -1154,6 +1178,12 @@ static int ov5647_probe(struct i2c_client *client)
 	ret = ov5647_configure_regulators(dev, sensor);
 	if (ret) {
 		dev_err(dev, "Failed to get power regulators\n");
+		return ret;
+	}
+
+	ret = device_create_file(&client->dev, &dev_attr_power_control);
+	if (ret) {
+		dev_err(&client->dev, "Failed to create power_control sysfs entry\n");
 		return ret;
 	}
 
@@ -1214,6 +1244,7 @@ static void ov5647_remove(struct i2c_client *client)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ov5647 *sensor = to_sensor(sd);
 
+	device_remove_file(&client->dev, &dev_attr_power_control);
 	v4l2_async_unregister_subdev(&sensor->sd);
 	media_entity_cleanup(&sensor->sd.entity);
 	v4l2_ctrl_handler_free(&sensor->ctrls);
